@@ -3,65 +3,65 @@
 <head>
 	<meta charset="utf-8" />
 	<title>Tunnel Digger</title>
-<style type="text/css">
-.btn {
-	-moz-box-shadow:inset 0px 1px 0px 0px #bbdaf7;
-	-webkit-box-shadow:inset 0px 1px 0px 0px #bbdaf7;
-	box-shadow:inset 0px 1px 0px 0px #bbdaf7;
-	background:-webkit-gradient( linear, left top, left bottom, color-stop(0.05, #79bbff), color-stop(1, #378de5) );
-	background:-moz-linear-gradient( center top, #79bbff 5%, #378de5 100% );
-	filter:progid:DXImageTransform.Microsoft.gradient(startColorstr='#79bbff', endColorstr='#378de5');
-	background-color:#79bbff;
-	-webkit-border-top-left-radius:20px;
-	-moz-border-radius-topleft:20px;
-	border-top-left-radius:20px;
-	-webkit-border-top-right-radius:20px;
-	-moz-border-radius-topright:20px;
-	border-top-right-radius:20px;
-	-webkit-border-bottom-right-radius:20px;
-	-moz-border-radius-bottomright:20px;
-	border-bottom-right-radius:20px;
-	-webkit-border-bottom-left-radius:20px;
-	-moz-border-radius-bottomleft:20px;
-	border-bottom-left-radius:20px;
-	text-indent:0;
-	border:1px solid #84bbf3;
-	display:inline-block;
-	color:#ffffff;
-	font-family:Arial;
-	font-size:35px;
-	font-weight:bold;
-	font-style:normal;
-	height:100px;
-	line-height:100px;
-	width:200px;
-	text-decoration:none;
-	text-align:center;
-	text-shadow:1px 1px 0px #528ecc;
-}
-.btn:hover {
-	background:-webkit-gradient( linear, left top, left bottom, color-stop(0.05, #378de5), color-stop(1, #79bbff) );
-	background:-moz-linear-gradient( center top, #378de5 5%, #79bbff 100% );
-	filter:progid:DXImageTransform.Microsoft.gradient(startColorstr='#378de5', endColorstr='#79bbff');
-	background-color:#378de5;
-}.btn:active {
-	position:relative;
-	top:1px;
-}/* This button was generated using CSSButtonGenerator.com */
-html, 
-body {
-	height: 100%;
-	background-color:#f5f5f5;
-	margin: 0;
-}
-#status {
-	height: 100%;
-	text-align: center;
-	display: flex;
-	justify-content: center;
-	align-items: center;
-}
-</style>
+	<style type="text/css">
+	.btn {
+		-moz-box-shadow:inset 0px 1px 0px 0px #bbdaf7;
+		-webkit-box-shadow:inset 0px 1px 0px 0px #bbdaf7;
+		box-shadow:inset 0px 1px 0px 0px #bbdaf7;
+		background:-webkit-gradient( linear, left top, left bottom, color-stop(0.05, #79bbff), color-stop(1, #378de5) );
+		background:-moz-linear-gradient( center top, #79bbff 5%, #378de5 100% );
+		filter:progid:DXImageTransform.Microsoft.gradient(startColorstr='#79bbff', endColorstr='#378de5');
+		background-color:#79bbff;
+		-webkit-border-top-left-radius:20px;
+		-moz-border-radius-topleft:20px;
+		border-top-left-radius:20px;
+		-webkit-border-top-right-radius:20px;
+		-moz-border-radius-topright:20px;
+		border-top-right-radius:20px;
+		-webkit-border-bottom-right-radius:20px;
+		-moz-border-radius-bottomright:20px;
+		border-bottom-right-radius:20px;
+		-webkit-border-bottom-left-radius:20px;
+		-moz-border-radius-bottomleft:20px;
+		border-bottom-left-radius:20px;
+		text-indent:0;
+		border:1px solid #84bbf3;
+		display:inline-block;
+		color:#ffffff;
+		font-family:Arial;
+		font-size:35px;
+		font-weight:bold;
+		font-style:normal;
+		height:100px;
+		line-height:100px;
+		width:200px;
+		text-decoration:none;
+		text-align:center;
+		text-shadow:1px 1px 0px #528ecc;
+	}
+	.btn:hover {
+		background:-webkit-gradient( linear, left top, left bottom, color-stop(0.05, #378de5), color-stop(1, #79bbff) );
+		background:-moz-linear-gradient( center top, #378de5 5%, #79bbff 100% );
+		filter:progid:DXImageTransform.Microsoft.gradient(startColorstr='#378de5', endColorstr='#79bbff');
+		background-color:#378de5;
+	}.btn:active {
+		position:relative;
+		top:1px;
+	}/* This button was generated using CSSButtonGenerator.com */
+	html,
+	body {
+		height: 100%;
+		background-color:#f5f5f5;
+		margin: 0;
+	}
+	#status {
+		height: 100%;
+		text-align: center;
+		display: flex;
+		justify-content: center;
+		align-items: center;
+	}
+	</style>
 	<script src="sweetalert.min.js"></script>
 	<link rel="stylesheet" type="text/css" href="sweetalert.css">
 </head>
@@ -90,8 +90,14 @@ var checksetexec = function(file){
 }
 
 var dig = function(addr){
-	checksetexec('./jump');
-	var p = child_process.spawn('./jump', ['-to', addr]);
+	var isWin = /^win/.test(process.platform);
+	var p = null;
+	if(isWin){
+		p = child_process.spawn('./jump.exe', ['-to', addr]);
+	}else{
+		checksetexec('./jump');
+		p = child_process.spawn('./jump', ['-to', addr]);
+	}
 	var stdout = '';
 	var stderr = '';
 	var io = new EventEmitter();
@@ -108,7 +114,7 @@ var dig = function(addr){
 	p.stderr.on('data', function(data){
 		stderr += data.toString();
 		var lines = stderr.split('\n');
-//console.log('stderr', lines);
+//		console.log('stderr', lines);
 		while(lines.length > 1){
 			io.emit('data', lines.shift());
 		}
@@ -276,5 +282,5 @@ var alertGui = function(msg, type, cb){
 
 document.getElementById('set').addEventListener('click', conGui);
 
-</script>  
+</script>
 </html>
