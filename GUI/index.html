@@ -1,0 +1,280 @@
+<!DOCTYPE html>
+<html>
+<head>
+	<meta charset="utf-8" />
+	<title>Tunnel Digger</title>
+<style type="text/css">
+.btn {
+	-moz-box-shadow:inset 0px 1px 0px 0px #bbdaf7;
+	-webkit-box-shadow:inset 0px 1px 0px 0px #bbdaf7;
+	box-shadow:inset 0px 1px 0px 0px #bbdaf7;
+	background:-webkit-gradient( linear, left top, left bottom, color-stop(0.05, #79bbff), color-stop(1, #378de5) );
+	background:-moz-linear-gradient( center top, #79bbff 5%, #378de5 100% );
+	filter:progid:DXImageTransform.Microsoft.gradient(startColorstr='#79bbff', endColorstr='#378de5');
+	background-color:#79bbff;
+	-webkit-border-top-left-radius:20px;
+	-moz-border-radius-topleft:20px;
+	border-top-left-radius:20px;
+	-webkit-border-top-right-radius:20px;
+	-moz-border-radius-topright:20px;
+	border-top-right-radius:20px;
+	-webkit-border-bottom-right-radius:20px;
+	-moz-border-radius-bottomright:20px;
+	border-bottom-right-radius:20px;
+	-webkit-border-bottom-left-radius:20px;
+	-moz-border-radius-bottomleft:20px;
+	border-bottom-left-radius:20px;
+	text-indent:0;
+	border:1px solid #84bbf3;
+	display:inline-block;
+	color:#ffffff;
+	font-family:Arial;
+	font-size:35px;
+	font-weight:bold;
+	font-style:normal;
+	height:100px;
+	line-height:100px;
+	width:200px;
+	text-decoration:none;
+	text-align:center;
+	text-shadow:1px 1px 0px #528ecc;
+}
+.btn:hover {
+	background:-webkit-gradient( linear, left top, left bottom, color-stop(0.05, #378de5), color-stop(1, #79bbff) );
+	background:-moz-linear-gradient( center top, #378de5 5%, #79bbff 100% );
+	filter:progid:DXImageTransform.Microsoft.gradient(startColorstr='#378de5', endColorstr='#79bbff');
+	background-color:#378de5;
+}.btn:active {
+	position:relative;
+	top:1px;
+}/* This button was generated using CSSButtonGenerator.com */
+html, 
+body {
+	height: 100%;
+	background-color:#f5f5f5;
+	margin: 0;
+}
+#status {
+	height: 100%;
+	text-align: center;
+	display: flex;
+	justify-content: center;
+	align-items: center;
+}
+</style>
+	<script src="sweetalert.min.js"></script>
+	<link rel="stylesheet" type="text/css" href="sweetalert.css">
+</head>
+<body>
+	<div id="status">
+		<a href="#" id="set" class="btn">連線</a>
+	</div>
+</body>
+<script>
+var server_url = "45.32.24.156";
+
+var fs = require('fs');
+var EventEmitter = require('events');
+var child_process = require('child_process');
+var proc = null;
+
+var stat = 0;
+
+var checksetexec = function(file){
+	var stat = fs.statSync(file);
+	var mode = stat.mode;
+
+	mode = mode | 0100 | 010 | 0001;
+
+	fs.chmodSync(file, mode);
+}
+
+var dig = function(addr){
+	checksetexec('./jump');
+	var p = child_process.spawn('./jump', ['-to', addr]);
+	var stdout = '';
+	var stderr = '';
+	var io = new EventEmitter();
+	p.io = io;
+	p.stdout.on('data', function(data){
+		stdout += data.toString();
+		var lines = stdout.split('\n');
+		while(lines.length > 1){
+			io.emit('data', lines.shift());
+		}
+		stdout = lines[0];
+	});
+
+	p.stderr.on('data', function(data){
+		stderr += data.toString();
+		var lines = stderr.split('\n');
+//console.log('stderr', lines);
+		while(lines.length > 1){
+			io.emit('data', lines.shift());
+		}
+		stderr = lines[0];
+	});
+
+	p.on('error', function(e){
+		alertGui("程式錯誤!!\n" + e, "error");
+	});
+	p.on('close', function(code){
+		if (code !== 0) {
+			console.log('process exited with code', code);
+		}
+	});
+
+	p.io.on('data', function(data){
+		console.log('jump: ', data);
+		var err = data.match(/.*(\[E\d\-\d\])(.*)/);
+		if(err){
+//			console.log('err', err);
+			console.log('err', err[1], err[2]);
+			switch(err[1]){
+				case "[E0-1]": // getsockopt: connection refused
+					alertGui("無法連線至伺服器!!", "error");
+					break;
+				case "[E0-3]": // version failed!
+					alertGui("版本不符，請更新至最新版!!", "error");
+					break;
+				case "[E0-4]": // version failed!
+					alertGui("伺服器已滿!!", "error");
+					break;
+
+				case "[E0-5]": // io failed!
+				case "[E0-6]":
+					win.show();
+					alertGui("連線意外中斷!!", "error");
+					break;
+				default:
+					win.show();
+					alertGui("錯誤: " + err[2], "error");
+					break;
+			}
+			doClose();
+			return
+		}
+		var info = data.match(/.*(\[I\d\-\d\])(.*)/);
+		if(info){
+//			console.log('info', info);
+			console.log('info', info[1], info[2]);
+			switch(info[1]){
+				case "[I0-0]": // OK
+					alertGui('連線成功!!\nurl為 ' + info[2].split('Connect to ')[1], "info", function(){win.hide()});
+					doConnected();
+					break;
+				case "[I0-1]": // close
+					alertGui('已斷線!!', "info");
+					doClose();
+					break;
+			}
+		}
+	});
+	return p;
+}
+
+var doClose = function(){
+	win.show();
+	if(proc){
+		proc.kill();
+	}
+	tray.icon = '0.png';
+	stat = 0;
+	item.label = '連線';
+	item.checked = false;
+	tray.tooltip = "尚未連線";
+}
+var doConnected = function(){
+//	win.hide();
+	stat = 2;
+	tray.icon = '2.png';
+	item.label = '斷線';
+	item.checked = true;
+	tray.tooltip = "成功連線";
+}
+
+var conGui = function(e){
+	switch(stat){
+		case 2:
+			doClose();
+			break;
+		case 1:
+			doClose();
+			break;
+		case 0:
+			swal({
+				title: "",
+				text: "請輸入要公開的port:",
+				type: "input",
+				showCancelButton: false,
+				closeOnConfirm: false,
+				inputPlaceholder: "25565",
+				showLoaderOnConfirm: true,
+			}, function(inputValue){
+				if(inputValue === false) return false;
+				var port = parseInt(inputValue);
+				if((inputValue === "")||(port < 0 || port > 65536)){
+					swal.showInputError("請輸入正確的port!!");
+					return false
+				}
+				proc = dig('127.0.0.1:' + port);
+				tray.icon = '1.png';
+//				item.label = '斷線';
+				item.checked = true;
+				stat = 1;
+			});
+			break;
+	}
+}
+
+var win = nw.Window.get();
+//win.hide();
+//win.showDevTools();
+
+var tray = new nw.Tray({ title: 'Tray', icon: 'p0.png' });
+tray.title = "Tunnel Digger";
+tray.tooltip = "尚未連線";
+tray.icon = '0.png';
+
+
+var item = new nw.MenuItem({
+	label: '連線',
+	type: 'checkbox',
+	click: conGui
+});
+
+// Give it a menu
+var menu = new nw.Menu();
+menu.append(item);
+menu.append(new nw.MenuItem({ type: 'separator' }));
+menu.append(new nw.MenuItem({
+	label: '離開',
+	click: function(){
+		tray.remove();
+		tray = null;
+		win.close();
+		if(proc){
+			proc.kill();
+		}
+		App.closeAllWindows();
+		App.quit();
+	}
+}));
+tray.menu = menu;
+
+tray.on('click', conGui);
+
+var alertGui = function(msg, type, cb){
+	swal({
+		title: msg,
+		type: type
+	}, cb);
+	if(type == "error"){
+		stat = 0;
+	}
+}
+
+document.getElementById('set').addEventListener('click', conGui);
+
+</script>  
+</html>
