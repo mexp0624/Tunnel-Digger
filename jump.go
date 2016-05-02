@@ -1,4 +1,5 @@
-// This is a simple TCP multiplexing server.
+// This is a simple SOCKS5 proxy server.
+// Copyright 2013-2015, physacco. Distributed under the MIT license.
 // Copyright 2016, mexp0624. Distributed under the MIT license.
 
 package main
@@ -44,6 +45,7 @@ type Socket struct {
 	inEv chan int
 	inBuffer []byte
 	appendBuff sync.Mutex
+	stat sync.Mutex
 }
 
 func(s *Socket) Write(b []byte) (n int, err error){
@@ -82,12 +84,19 @@ func(s *Socket) Read(b []byte) (n int, err error){
 	n = len(b)
 	s.appendBuff.Lock()
 	in := len(s.inBuffer)
-
 	if in <= n {
 		copy(b, s.inBuffer[:in])
 		s.inBuffer = make([]byte, 0)
 		s.appendBuff.Unlock()
 		n = in
+		s.stat.Lock()
+		if s.isClose != false {
+			s.stat.Unlock()
+			return n, io.EOF
+		}else{
+			s.stat.Unlock()
+			return n, nil
+		}
 	}else{
 		copy(b, s.inBuffer[:n])
 		rlen := in - n
@@ -98,18 +107,20 @@ func(s *Socket) Read(b []byte) (n int, err error){
 				default:
 			}
 			s.inEv <- rlen
+			s.appendBuff.Unlock()
+			return n, nil
 		}else{
 			s.inBuffer = make([]byte, 0)
+			s.appendBuff.Unlock()
+			s.stat.Lock()
+			if s.isClose != false {
+				s.stat.Unlock()
+				return n, io.EOF
+			}else{
+				s.stat.Unlock()
+				return n, nil
+			}
 		}
-		s.appendBuff.Unlock()
-//		log.Println("[Read']:", n, len(s.inBuffer), rlen)
-	}
-//	log.Println("[Read]:", n, len(s.inBuffer))
-
-	if s.isClose != false {
-		return n, io.EOF
-	}else{
-		return n, nil
 	}
 }
 func(s *Socket) Push(b []byte) (n int, err error){
@@ -117,7 +128,6 @@ func(s *Socket) Push(b []byte) (n int, err error){
 
 	s.appendBuff.Lock()
 	s.inBuffer = append(s.inBuffer, b[0:n]...)
-//	log.Println("[Push]:", n, len(s.inBuffer))
 	select {
 		case <- s.inEv:
 		default:
@@ -145,17 +155,24 @@ func(s *Socket) Push(b []byte) (n int, err error){
 }
 func(s *Socket) Close() error{
 	log.Printf("[ch%d][Close]%v\n", s.id, s.isClose)
+	s.stat.Lock()
 	if !s.isClose {
+		s.stat.Unlock()
 		s.mux.wMutex.Lock()
 		s.mux.io.Write([]byte{ byte(0xFF), byte(s.id), CLS})
 		s.mux.wMutex.Unlock()
+		s.stat.Lock()
 		s.isClose = true;
+		s.stat.Unlock()
 		s.mux.poolMutex.Lock()
 		if s.mux.pool[s.id] != nil {
 			s.mux.pool[s.id] = nil
 		}
 		s.mux.poolMutex.Unlock()
+	}else{
+		s.stat.Unlock()
 	}
+
 	s.appendBuff.Lock()
 //	s.inBuffer = make([]byte, 0)
 	select {
@@ -241,9 +258,6 @@ func readBytesAsync(conn io.Reader, count int) (buf []byte, err error) {
 					c <- err
 					return
 				}
-				/*if rem < 0 {
-					log.Printf("[readBytesAsync]: i > count, %d, %d, %d\n", i, count, rem)
-				}*/
 			}
 			if err != nil {
 //				log.Println("[readBytesAsync]err:", err)
@@ -291,11 +305,9 @@ func getId() (id []byte) {
 	}
 	count := len(interfaces)
 	for _, inter := range interfaces {
-//		fmt.Println(inter.Name, inter.HardwareAddr)
 		hashBytes(id[6:10], append(inter.HardwareAddr, []byte(inter.Name)...), uint32(count))
 		safeXORBytes(id[0:6], id[0:6], inter.HardwareAddr)
 	}
-//	fmt.Println("id", id)
 	return
 }
 
@@ -450,21 +462,27 @@ func hubConn() {
 				case FIN:
 //					log.Printf("[ch%d][cmd][end]\n", ch)
 					if pool[ch] != nil {
-						pool[ch].isClose = true
+						pool[ch].stat.Lock()
+						pool[ch].isClose = true;
+						pool[ch].stat.Unlock()
 						pool[ch].Close()
 						pool[ch] = nil
 					}
 				case CLS:
 					log.Printf("[ch%d][cmd][close]\n", ch)
 					if pool[ch] != nil {
-						pool[ch].isClose = true
+						pool[ch].stat.Lock()
+						pool[ch].isClose = true;
+						pool[ch].stat.Unlock()
 						pool[ch].Close()
 						pool[ch] = nil
 					}
 				case ERR:
 					log.Printf("[ch%d][cmd][err]\n", ch)
 					if pool[ch] != nil {
-						pool[ch].isClose = true
+						pool[ch].stat.Lock()
+						pool[ch].isClose = true;
+						pool[ch].stat.Unlock()
 						pool[ch].Close()
 						pool[ch] = nil
 					}
